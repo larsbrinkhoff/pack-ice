@@ -147,12 +147,22 @@ search_string (state_t *state, int *ret_length, int level)
 	  break;
       }
 
-    if (offset > 0)
+    if (i > 0)
       {
 	max_length = i;
 	max_offset = -1;
 	max_compression = 
-	  (double)(8 * i) / (double)pack_bits (length, offset);
+	  (double)(8 * i) / (double)pack_bits (i, -1);
+
+#if 0
+	fprintf (stderr, "repeat: length = %d, %2.2f\n", i, max_compression);
+#endif
+      }
+    else
+      {
+	max_length = 1;
+	max_offset = 0;
+	max_compression = 0.0;
       }
   }
 
@@ -434,14 +444,15 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
   int max_pack_length;
   int max_pack_offset;
   double max_compression, current_compression;
-  int i;
+  int i, N;
 
   max_copy_length = state->unpacked - state->unpacked_stop;
   max_pack_length = 0;
   current_compression = 1.0;
 
   max_compression = 0;
-  for (i = 0; i < 33038; i++)
+  N = 33038;
+  for (i = 0; i < N; i++)
     {
       int compressed_bits, uncompressed_bits;
       int length, offset;
@@ -468,25 +479,28 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
 #else
       new_state.packed -= 2;
       new_state.unpacked -= length;
-      uncompressed_bits += length;
+      uncompressed_bits += 8 * length;
       compressed_bits += pack_bits (length, offset);
 #endif
 
+      compression = (double)uncompressed_bits /
+	            (double)compressed_bits;
+
 #if 0
       fprintf (stderr,
-"copy: length = %d; pack: length = %d, offset = %d; u = %d, c = %d\n",
-	       i, length, offset, uncompressed_bits, compressed_bits);
+"? copy: length = %d; pack: length = %d, offset = %d; u = %d, c = %d, %2.2f\n",
+	       i, length, offset, uncompressed_bits, compressed_bits, compression);
 #endif
 
-      if (1)
+      if (compression > max_compression)
 	{
-	  max_compression = (double)uncompressed_bits /
-	                    (double)compressed_bits;
+	  max_compression = compression;
 	  max_copy_length = i;
 	  max_pack_length = length;
 	  max_pack_offset = offset;
-	  break;
+	  break; //N = i + 3;
 	}
+      continue;
 
 #if 0
       compression =

@@ -138,7 +138,6 @@ search_string (state_t *state, int *ret_length, int level)
   int offset, length, max_offset, max_length;
   double compression, max_compression;
 
-  if (0)
   {
     int i;
 
@@ -150,14 +149,13 @@ search_string (state_t *state, int *ret_length, int level)
 
     if (offset > 0)
       {
-	*ret_length = i;
-	return -1;
+	max_length = i;
+	max_offset = -1;
+	max_compression = 
+	  (double)(8 * i) / (double)pack_bits (length, offset);
       }
   }
 
-  max_offset = 0;
-  max_length = 1;
-  max_compression = 0.0;
   for (offset = 1; offset < 4383; offset++)
     {
       if (state->unpacked + offset >= state->unpacked_start)

@@ -8,7 +8,7 @@
 char *me;
 
 static void
-thaw (char *ice_file)
+melt (char *ice_file)
 {
   char header[ICE_HEADER_SIZE];
   char *destination;
@@ -133,7 +133,7 @@ main (int argc, char **argv)
 
   for (i = 1; i < argc; i++)
     {
-      thaw (argv[i]);
+      melt (argv[i]);
     }
 
   return 0;

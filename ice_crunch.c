@@ -2,13 +2,15 @@
 #include <string.h>
 #include "ice_private.h"
 
+#define NEW_ALGORITHM
+
 #ifdef ICE_DEBUG
 #include <stdio.h>
 #endif
 
-#ifndef NEW_ALGORITHM
+#define COPY (-2)
 
-typedef struct ice_crunch_state
+typedef struct
 {
   int last_copy_direct;
   size_t unpacked_length;
@@ -22,9 +24,6 @@ typedef struct ice_crunch_state
   int bits_written;
   int bits_copied;
 } state_t;
-
-static void analyze (state_t *state, int level, int *copy_length,
-		     int *pack_length, int *pack_offset);
 
 static void
 init_state (state_t *state, char *data, size_t length, void *packed_start)
@@ -135,141 +134,6 @@ static int
 copy_bits (int length)
 {
   return copy_length_bits (length) + 8 * length;
-}
-
-static int
-search_string (state_t *state, int *ret_length, int level)
-{
-  int offset, length, max_offset, max_length;
-  double compression, max_compression;
-
-#if 1
-  max_length = 1;
-  max_offset = 0;
-  max_compression = 0.0;
-
-  for (offset = -1; offset < 4383; offset++)
-    {
-      int uncompressed_bits;
-      int compressed_bits;
-      int X = offset == -1 ? 0 : -1;
-
-      if (offset == -1 && state->unpacked == state->unpacked_start)
-	break;
-      if (state->unpacked + offset > state->unpacked_start)
-	break;
-
-      for (length = 0;
-	   state->unpacked[offset - length + X] ==
-	     state->unpacked[-length + X];
-	   length++)
-	{
-	  if (state->unpacked - length + X < state->unpacked_stop)
-	    break;
-	  if (length == offset)
-	    break;
-	  if (length == 1033)
-	    break;
-	}
-
-      if (length < 2)
-	continue;
-      if (length == 2 && offset >= 574)
-	continue;
-
-      uncompressed_bits = 8 * length;
-      compressed_bits = pack_bits (length, offset);
-      compression = (double)uncompressed_bits / (double)compressed_bits;
-
-      if (compression > max_compression)
-	{
-	  max_compression = compression;
-	  max_length = length;
-	  max_offset = offset;
-	}
-    }
-#else
-  {
-    int i;
-
-    for (i = 0; i < 1034; i++)
-      {
-	if (state->unpacked[-i - 1] != state->unpacked[-i])
-	  break;
-      }
-
-    if (i > 1 && state->unpacked < state->unpacked_start)
-      {
-	max_length = i;
-	max_offset = -1;
-	max_compression = 
-	  (double)(8 * i) / (double)pack_bits (i, -1);
-      }
-    else
-      {
-	max_length = 1;
-	max_offset = 0;
-	max_compression = 0.0;
-      }
-  }
-
-  for (offset = 1; offset < 4383; offset++)
-    {
-      int uncompressed_bits;
-      int compressed_bits;
-
-      if (state->unpacked + offset > state->unpacked_start)
-	break;
-
-      for (length = 1;
-	   state->unpacked[offset - length] ==
-	     state->unpacked[-length];
-	   length++)
-	{
-	  if (length == offset)
-	    break;
-	  if (length == 1033)
-	    break;
-	  if (length < 2)
-	    continue;
-	  if (length == 2 && offset >= 574)
-	    continue;
-
-	  uncompressed_bits = 8 * length;
-	  compressed_bits = pack_bits (length, offset);
-
-	  if ((double)uncompressed_bits /
-	      (double)compressed_bits > max_compression &&
-	      level > 1 && state->unpacked - length > state->unpacked_stop)
-	    {
-	      state_t new_state = *state;
-	      int clen, plen, poff;
-
-	      new_state.unpacked -= length;
-	      analyze (&new_state, level - 1, &clen, &plen, &poff);
-	      if (clen == 0 && poff == offset)
-		continue;
-	      if (clen > 0 || plen > 0)
-		{
-		  uncompressed_bits += 8 * (clen + plen);
-		  compressed_bits += copy_bits (clen) + pack_bits (plen, poff);
-		}
-	    }
-
-	  compression = (double)uncompressed_bits / (double)compressed_bits;
-
-	  if (compression > max_compression)
-	    {
-	      max_compression = compression;
-	      max_length = length;
-	      max_offset = offset;
-	    }
-	}
-    }
-#endif
-
-  *ret_length = max_length;
-  return max_offset;
 }
 
 void
@@ -479,6 +343,189 @@ copy_direct (state_t *state, int length)
 }
 
 static void
+debug_print_info (state_t *state, const char *name, int length, int offset)
+{
+#ifdef ICE_DEBUG
+  int bits;
+  int i;
+
+  if (length == 0 && offset != COPY)
+    return;
+
+  if (offset == COPY)
+    bits = copy_bits (length);
+  else
+    bits = pack_bits (length, offset);
+
+  fprintf (stderr, "%s: %3d", name, length);
+  if (offset < -1)
+    fprintf (stderr, "      ");
+  else
+    fprintf (stderr, ", %3d ", offset);
+  fprintf (stderr, "%3d->%2d \"", 8 * length, bits);
+  for (i = 0; i < length; i++)
+    {
+      unsigned char c = state->unpacked[i];
+      switch (c)
+	{
+	case '\n':
+	  fprintf (stderr, "\\n");
+	  break;
+	case '\t':
+	  fprintf (stderr, "\\t");
+	  break;
+	default:
+	  if (c < 32 || c >= 127)
+	    fprintf (stderr, "\\x%02x", c);
+	  else
+	    fputc (c, stderr);
+	}
+    }
+  fprintf (stderr, "\"\n");
+#endif
+}
+
+#ifndef NEW_ALGORITHM
+
+static void analyze (state_t *state, int level, int *copy_length,
+		     int *pack_length, int *pack_offset);
+
+static int
+search_string (state_t *state, int *ret_length, int level)
+{
+  int offset, length, max_offset, max_length;
+  double compression, max_compression;
+
+#if 1
+  max_length = 1;
+  max_offset = 0;
+  max_compression = 0.0;
+
+  for (offset = -1; offset < 4383; offset++)
+    {
+      int uncompressed_bits;
+      int compressed_bits;
+      int X = offset == -1 ? 0 : -1;
+
+      if (offset == -1 && state->unpacked == state->unpacked_start)
+	break;
+      if (state->unpacked + offset > state->unpacked_start)
+	break;
+
+      for (length = 0;
+	   state->unpacked[offset - length + X] ==
+	     state->unpacked[-length + X];
+	   length++)
+	{
+	  if (state->unpacked - length + X < state->unpacked_stop)
+	    break;
+	  if (length == offset)
+	    break;
+	  if (length == 1033)
+	    break;
+	}
+
+      if (length < 2)
+	continue;
+      if (length == 2 && offset >= 574)
+	continue;
+
+      uncompressed_bits = 8 * length;
+      compressed_bits = pack_bits (length, offset);
+      compression = (double)uncompressed_bits / (double)compressed_bits;
+
+      if (compression > max_compression)
+	{
+	  max_compression = compression;
+	  max_length = length;
+	  max_offset = offset;
+	}
+    }
+#else
+  {
+    int i;
+
+    for (i = 0; i < 1034; i++)
+      {
+	if (state->unpacked[-i - 1] != state->unpacked[-i])
+	  break;
+      }
+
+    if (i > 1 && state->unpacked < state->unpacked_start)
+      {
+	max_length = i;
+	max_offset = -1;
+	max_compression = 
+	  (double)(8 * i) / (double)pack_bits (i, -1);
+      }
+    else
+      {
+	max_length = 1;
+	max_offset = 0;
+	max_compression = 0.0;
+      }
+  }
+
+  for (offset = 1; offset < 4383; offset++)
+    {
+      int uncompressed_bits;
+      int compressed_bits;
+
+      if (state->unpacked + offset > state->unpacked_start)
+	break;
+
+      for (length = 1;
+	   state->unpacked[offset - length] ==
+	     state->unpacked[-length];
+	   length++)
+	{
+	  if (length == offset)
+	    break;
+	  if (length == 1033)
+	    break;
+	  if (length < 2)
+	    continue;
+	  if (length == 2 && offset >= 574)
+	    continue;
+
+	  uncompressed_bits = 8 * length;
+	  compressed_bits = pack_bits (length, offset);
+
+	  if ((double)uncompressed_bits /
+	      (double)compressed_bits > max_compression &&
+	      level > 1 && state->unpacked - length > state->unpacked_stop)
+	    {
+	      state_t new_state = *state;
+	      int clen, plen, poff;
+
+	      new_state.unpacked -= length;
+	      analyze (&new_state, level - 1, &clen, &plen, &poff);
+	      if (clen == 0 && poff == offset)
+		continue;
+	      if (clen > 0 || plen > 0)
+		{
+		  uncompressed_bits += 8 * (clen + plen);
+		  compressed_bits += copy_bits (clen) + pack_bits (plen, poff);
+		}
+	    }
+
+	  compression = (double)uncompressed_bits / (double)compressed_bits;
+
+	  if (compression > max_compression)
+	    {
+	      max_compression = compression;
+	      max_length = length;
+	      max_offset = offset;
+	    }
+	}
+    }
+#endif
+
+  *ret_length = max_length;
+  return max_offset;
+}
+
+static void
 analyze (state_t *state, int level, int *copy_length, int *pack_length,
 	 int *pack_offset)
 {
@@ -547,43 +594,6 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
 }
 
 static void
-debug_print_info (state_t *state, const char *name, int length,
-		  int offset, int bits)
-{
-#ifdef ICE_DEBUG
-  int i;
-  if (length == 0 && offset >= -1)
-    return;
-
-  fprintf (stderr, "%s: %3d", name, length);
-  if (offset < -1)
-    fprintf (stderr, "      ");
-  else
-    fprintf (stderr, ", %3d ", offset);
-  fprintf (stderr, "%3d->%2d \"", 8 * length, bits);
-  for (i = 0; i < length; i++)
-    {
-      unsigned char c = state->unpacked[i];
-      switch (c)
-	{
-	case '\n':
-	  fprintf (stderr, "\\n");
-	  break;
-	case '\t':
-	  fprintf (stderr, "\\t");
-	  break;
-	default:
-	  if (c < 32 || c >= 127)
-	    fprintf (stderr, "\\x%02x", c);
-	  else
-	    fputc (c, stderr);
-	}
-    }
-  fprintf (stderr, "\"\n");
-#endif
-}
-
-static void
 crunch (state_t *state, int level)
 {
   do
@@ -594,11 +604,9 @@ level = 2;
       analyze (state, level, &copy_length, &pack_length, &pack_offset);
 
       copy_direct (state, copy_length);
-      debug_print_info (state, "copy", copy_length, -2,
-			copy_bits (copy_length));
+      debug_print_info (state, "copy", copy_length, COPY);
       pack_string (state, pack_length, pack_offset);
-      debug_print_info (state, "pack", pack_length, pack_offset,
-			pack_bits (pack_length, pack_offset));
+      debug_print_info (state, "pack", pack_length, pack_offset);
     }
   while (state->unpacked > state->unpacked_stop);
 
@@ -623,14 +631,6 @@ level = 2;
 
 #else /* NEW_ALGORITHM */
 
-#define COPY (-2)
-
-typedef struct
-{
-  char *byte;
-  int length;
-} data_t;
-
 typedef struct
 {
   int length;
@@ -639,44 +639,66 @@ typedef struct
 } info_t;
 
 static void
-analyze_here (data_t *data, info_t *info, int i)
+compress (state_t *state, info_t *info)
+{
+  int last_was_pack = 0;
+  int i;
+
+  for (i = state->unpacked_length - 1; i >= 0; i -= info[i].length)
+    {
+      if (info[i].offset == COPY)
+	{
+	  copy_direct (state, info[i].length);
+	  debug_print_info (state, "copy", info[i].length, COPY);
+	  last_was_pack = 0;
+	}
+      else
+	{
+	  if (last_was_pack)
+	    {
+	      copy_direct (state, 0);
+	      debug_print_info (state, "copy", 0, COPY);
+	    }
+	  pack_string (state, info[i].length, info[i].offset);
+	  debug_print_info (state, "pack", info[i].length, info[i].offset);
+	  last_was_pack = 1;
+	}
+    }
+}
+
+static void
+analyze_this (state_t *state, info_t *info, int i)
 {
   int length, offset;
   int best_length;
   int best_offset;
   int best_bits;
-
-  if (i == 0)
-    {
-      info[0].length = 1;
-      info[0].offset = COPY;
-      info[0].bits = copy_bits (1);
-      return;
-    }
+  int bits;
 
   if (info[i - 1].offset == COPY)
-    info[i].length = info[i - 1].length + 1;
+    best_length = info[i - 1].length + 1;
   else
-    info[i].length = 1;
+    best_length = 1;
+  best_bits = info[i - best_length].bits + copy_bits (best_length);
   best_offset = COPY;
-  best_bits = info[i - 1].bits + copy_bits (info[i].length);
 
-  for (offset = 1; offset < 4383; offset++)
+  for (offset = -1; offset < 4383; offset++)
     {
       int X = offset == -1 ? 2 : 1;
 
-      if (offset == -1 && i == length - 1)
-	break;
-      if (i + offset > data->length)
+      if (offset == -1 && i == state->unpacked_length - 1)
+	continue;
+      if (i + offset > state->unpacked_length)
 	break;
       if (offset == 0)
-	break;
+	continue;
 
       for (length = 1;
-	   data->byte[i + offset + X - length] == data->byte[i + X - length];
+	   state->unpacked_stop[i + offset + X - length] ==
+	     state->unpacked_stop[i + X - length];
 	   length++)
 	{
-	  if (length > offset)
+	  if (length > offset && offset != -1)
 	    break;
 	  if (length == 1034)
 	    break;
@@ -687,7 +709,9 @@ analyze_here (data_t *data, info_t *info, int i)
 	  if (i + X - length < 0)
 	    break;
 
-	  bits = info[i - 1].bits + pack_bits (length, offset);
+	  bits = info[i - length].bits + pack_bits (length, offset);
+	  if (info[i - length].offset == COPY)
+	    bits += copy_bits (0);
 
 	  if (bits < best_bits)
 	    {
@@ -704,27 +728,54 @@ analyze_here (data_t *data, info_t *info, int i)
 }
 
 static void
-analyze (data_t *data, info_t *info)
+analyze (state_t *state, info_t *info)
 {
   int i;
 
-  for (i = 0; i < unpacked_length; i++)
+  info[-1].length = 0;
+  info[-1].offset = 0;
+  info[-1].bits = 0;
+
+  info[0].length = 1;
+  info[0].offset = COPY;
+  info[0].bits = copy_bits (1);
+
+  for (i = 1; i < state->unpacked_length; i++)
     {
-      analyze_here (data, info, i);
+      analyze_this (state, info, i);
     }
 }
 
 static void
-crunch (...)
+crunch (state_t *state, int level)
 {
   info_t *info;
 
-  info = malloc (unpacked_length * sizeof (info_t));
+  info = malloc ((state->unpacked_length + 1) * sizeof (info_t));
   if (info == NULL)
     exit (1);
 
-  analyze (data, info);
-  compress (data, info, packed);
+  analyze (state, info + 1);
+  compress (state, info + 1);
+  free (info);
+
+#ifdef ICE_DEBUG
+  fprintf (stderr,
+	   "summary: %d bits encoded in %d bits, compression factor %.2f\n",
+	   8 * state->unpacked_length,
+	   state->bits_written - 1 + state->bits_copied,
+	   (double)(8 * state->unpacked_length) /
+	   (double)(state->bits_written + state->bits_copied));
+#endif
+
+  flush_bits (state);
+
+  state->packed -= 4;
+  putinfo (state->packed, state->unpacked_length);
+  state->packed -= 4;
+  putinfo (state->packed, state->packed_start - state->packed + 4);
+  state->packed -= 4;
+  putinfo (state->packed, ICE_MAGIC);
 }
 
 #endif /* NEW_ALGORITHM */

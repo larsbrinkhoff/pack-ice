@@ -92,7 +92,7 @@ melt (char *ice_file)
       goto free_file;
     }
 
-  if (remove (ice_file) == -1)
+  if (strcmp (ice_file, file) != 0 && remove (ice_file) == -1)
     {
       fprintf (stderr, "%s: error removing file %s: %s\n",
 	       me, ice_file, strerror (errno));

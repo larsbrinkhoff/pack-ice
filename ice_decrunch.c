@@ -8,13 +8,17 @@ typedef struct ice_decrunch_state
   int bits;
 } state_t;
 
+char *packed_start;
+
 static size_t
 init_state (state_t *state, char *data, char *destination)
 {
   size_t unpacked_length;
 
+
   state->unpacked_stop = destination;
   state->packed = data + ice_crunched_length (data);
+  packed_start = state->packed;
   state->bits = *--state->packed;
   unpacked_length = ice_decrunched_length (data);
   state->unpacked = destination + unpacked_length;
@@ -62,24 +66,23 @@ get_bits (state_t *state, int n)
 static int
 get_depack_length (state_t *state)
 {
+  static int bits_to_get[]   = { 0, 0, 1, 2, 10 };
+  static int number_to_add[] = { 2, 3, 4, 6, 10 };
   int i, length;
   int bits;
 
-  {
-    static int length_tab[] =  { 10, 6, 4, 3, 2 };
-    static int bits_to_get[] = { 10, 2, 1, 0, 0 };
+  for (i = 0; i < 4; i++)
+    {
+      if (get_bit (state) == 0)
+	break;
+    }
 
-    for (i = 3; i >= 0; i--)
-      {
-	if (get_bit (state) == 0)
-	  break;
-      }
-
-    length = length_tab[i + 1];
-    bits = bits_to_get[i + 1];
-    if (bits > 0)
-      length += get_bits (state, bits);
-  }
+  bits = bits_to_get[i];
+  if (bits > 0)
+    length = get_bits (state, bits);
+  else
+    length = 0;
+  length += number_to_add[i];
 
   return length;
 }
@@ -90,24 +93,7 @@ get_depack_offset (state_t *state, int length)
   int i, offset;
   int bits, add;
 
-  if (length != 2)
-    {
-      static int bits_to_get[] =   {    12,  5,    8 };
-      static int number_to_add[] = { 0x11f, -1, 0x1f };
-
-      for (i = 1; i >= 0; i--)
-	{
-	  if (get_bit (state) == 0)
-	    break;
-	}
-
-      bits = bits_to_get[i + 1];
-      add = number_to_add[i + 1];
-      offset = get_bits (state, bits) + add;
-      if (offset < 0)
-	offset -= length - 2;
-    }
-  else
+  if (length == 2)
     {
       if (get_bit (state))
 	{
@@ -121,6 +107,23 @@ get_depack_offset (state_t *state, int length)
 	}
 
       offset = get_bits (state, bits) + add;
+    }
+  else
+    {
+      static int bits_to_get[] =   {  8,  5,  12 };
+      static int number_to_add[] = { 31, -1, 287 };
+
+      for (i = 0; i < 2; i++)
+	{
+	  if (get_bit (state) == 0)
+	    break;
+	}
+
+      bits = bits_to_get[i];
+      add = number_to_add[i];
+      offset = get_bits (state, bits) + add;
+      if (offset < 0)
+	offset -= length - 2;
     }
 
   return offset;

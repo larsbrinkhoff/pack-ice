@@ -165,8 +165,12 @@ search_string (state_t *state, int *ret_length, int level)
       }
   }
 
+#if 1
   for (offset = 1; offset < 4383; offset++)
     {
+      int uncompressed_bits;
+      int compressed_bits;
+
       if (state->unpacked + offset > state->unpacked_start)
 	break;
 
@@ -183,35 +187,75 @@ search_string (state_t *state, int *ret_length, int level)
 
       if (length < 2)
 	continue;
+      if (length == 2 && offset >= 574)
+	continue;
 
-      if (0) //level > 0  && state->unpacked - length > state->unpacked_stop)
-	{
-	  int copy_length, pack_length, pack_offset;
-	  state_t new_state = *state;
+      uncompressed_bits = 8 * length;
+      compressed_bits = pack_bits (length, offset);
+      compression = (double)uncompressed_bits / (double)compressed_bits;
 
-	  new_state.unpacked -= length;
-	  analyze (&new_state, level, &copy_length,
-		   &pack_length, &pack_offset);
-
-	  compression =
-	    (double)(8 * (length + copy_length + pack_length)) /
-	    (double)(pack_bits (length, offset) + copy_bits (copy_length) +
-		     pack_bits (pack_length, pack_offset));
-	}
-      else
-	{
-	  compression =
-	    (double)(8 * length) / (double)pack_bits (length, offset);
-	}
-
-      if (compression > max_compression &&
-	  !(length == 2 && offset >= 574))
+      if (compression > max_compression)
 	{
 	  max_compression = compression;
 	  max_length = length;
 	  max_offset = offset;
 	}
     }
+#else
+  for (offset = 1; offset < 4383; offset++)
+    {
+      int uncompressed_bits;
+      int compressed_bits;
+
+      if (state->unpacked + offset > state->unpacked_start)
+	break;
+
+      for (length = 1;
+	   state->unpacked[offset - length] ==
+	     state->unpacked[-length];
+	   length++)
+	{
+	  if (length == offset)
+	    break;
+	  if (length == 1033)
+	    break;
+	  if (length < 2)
+	    continue;
+	  if (length == 2 && offset >= 574)
+	    continue;
+
+	  uncompressed_bits = 8 * length;
+	  compressed_bits = pack_bits (length, offset);
+
+	  if ((double)uncompressed_bits /
+	      (double)compressed_bits > max_compression &&
+	      level > 1 && state->unpacked - length > state->unpacked_stop)
+	    {
+	      state_t new_state = *state;
+	      int clen, plen, poff;
+
+	      new_state.unpacked -= length;
+	      analyze (&new_state, level - 1, &clen, &plen, &poff);
+	      if (clen == 0 && poff == offset)
+		continue;
+	      if (clen > 0 || plen > 0)
+		{
+		  uncompressed_bits += 8 * (clen + plen);
+		  compressed_bits += copy_bits (clen) + pack_bits (plen, poff);
+		}
+	    }
+
+	  compression = (double)uncompressed_bits / (double)compressed_bits;
+
+	  if (compression > max_compression)
+	    {
+	      max_compression = compression;
+	      max_length = length;
+	      max_offset = offset;
+	    }
+	}
+    }
+#endif
 
   *ret_length = max_length;
   return max_offset;
@@ -438,6 +482,7 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
 
   max_copy_length = state->unpacked - state->unpacked_stop;
   max_pack_length = 0;
+  max_pack_offset = 0;
 
   max_compression = 0;
   N = 33038;
@@ -453,7 +498,7 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
 
       new_state.unpacked -= i;
 
-      offset = search_string (&new_state, &length, level - 1);
+      offset = search_string (&new_state, &length, level);
       if (length < 2)
 	continue;
 
@@ -465,11 +510,6 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
       {
 	int clen, plen, poff;
 	analyze (&new_state, level - 1, &clen, &plen, &poff);
-#ifdef ICE_DEBUG
-	fprintf (stderr,
-		 " clen = %d, plen = %d, poff = %d\n",
-		 clen, plen, poff);
-#endif
 	if (clen > 0 || plen > 0)
 	  {
 	    uncompressed_bits += 8 * (clen + plen);
@@ -479,14 +519,6 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
 
       compression = (double)uncompressed_bits /
 	            (double)compressed_bits;
-
-#ifdef ICE_DEBUG
-      fprintf (stderr,
-	       "  ubits = %d, cbits = %d, compr = %.2f\n",
-	       uncompressed_bits,
-	       compressed_bits,
-	       compression);
-#endif
 
       if (compression > max_compression)
 	{
@@ -520,7 +552,7 @@ debug_print_info (state_t *state, const char *name, int length,
   fprintf (stderr, "%3d->%2d \"", 8 * length, bits);
   for (i = 0; i < length; i++)
     {
-      char c = state->unpacked[i];
+      unsigned char c = state->unpacked[i];
       switch (c)
 	{
 	case '\n':

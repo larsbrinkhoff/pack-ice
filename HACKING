@@ -111,3 +111,101 @@ abcdefghij1234xxxxxxxxxxxxxxijxxxxxxxxxxxxabcdefghixxxx
 
    46 + 12 = 58
 ----------------------------------------------------------------------
+abcdefghij12xxxxijyyyyabcdefgh
+
+copy:   9       72->81 "yabcdefgh"
+pack:   3,  -1  24-> 9 "yyy"
+copy:   3       24->28 "xij"
+pack:   3,  -1  24-> 9 "xxx"
+copy:   2       16->20 "12"
+pack:   2,   8  16-> 8 "ij"
+copy:   0        0-> 1 ""
+pack:   8,  22  64->13 "abcdefgh"
+summary: 240 bits encoded in 169 bits, compression factor 1.41
+----------------------------------------------------------------------
+abcdefghij12xxxxijyyyyabcdefghi
+
+copy:  10       80->89 "yabcdefghi"
+pack:   3,  -1  24-> 9 "yyy"
+copy:   3       24->28 "xij"
+pack:   3,  -1  24-> 9 "xxx"
+copy:   3       24->28 "j12"
+pack:   9,  22  72->13 "abcdefghi"
+summary: 248 bits encoded in 176 bits, compression factor 1.40
+----------------------------------------------------------------------
+abcdefghij1234xxxxijxxxxabcdefghi
+
+copy:  10       80->89 "xabcdefghi"
+pack:   3,  -1  24-> 9 "xxx"
+copy:   2       16->20 "ij"
+pack:   4,   6  32->11 "xxxx"
+copy:   5       40->46 "j1234"		} 112 / 59 = 1.898
+pack:   9,  24  72->13 "abcdefghi"	}
+summary: 264 bits encoded in 188 bits, compression factor 1.40
+
+copy:  10       80->89 "xabcdefghi"
+pack:   3,  -1  24-> 9 "xxx"
+copy:   2       16->20 "ij"
+pack:   4,   6  32->11 "xxxx"
+copy:   4       32->36 "1234"	} 56 / 44 = 1.091	}
+pack:   2,  10  16-> 8 "ij"	}			} 112 / 58 = 1.931
+copy:   0        0-> 1 ""				}
+pack:   8,  24  64->13 "abcdefgh"			}
+summary: 264 bits encoded in 187 bits, compression factor 1.41
+----------------------------------------------------------------------
+abcdefghijklmnopqrstuvwxyz_abc_bcdefghij_fghijklmnop_pqrst_stuvwxyz
+
+copy:   9       72->81 "_stuvwxyz"
+pack:   2,   3  16-> 8 "st"
+copy:  16      128->145 "_fghijklmnop_pqr"
+pack:   5,   6  40->11 "fghij"
+copy:   5       40->46 "_bcde"
+pack:   2,   3  16-> 8 "bc"
+copy:   2       16->20 "_a"
+pack:   8,  41  64->15 "stuvwxyz"
+copy:   0        0-> 1 ""
+pack:   3,  38  24->11 "pqr"		<--
+copy:   0        0-> 1 ""		<--
+pack:  10,  36  80->21 "fghijklmno"	<-- 10 excessive bits
+copy:   0        0-> 1 ""		<--
+pack:   4,  30  32->11 "bcde"		<--
+copy:   1        8->10 "a"		<--
+summary: 536 bits encoded in 390 bits, compression factor 1.37
+
+copy:   9       72->81 "_stuvwxyz"
+pack:   2,   3  16-> 8 "st"
+copy:  16      128->145 "_fghijklmnop_pqr"
+pack:   2,   6  16-> 8 "ij"	<--
+copy:   0        0-> 1 ""	<-- 7 excessive bits
+pack:   3,   6  24-> 9 "fgh"	<--
+copy:   5       40->46 "_bcde"
+pack:   2,   3  16-> 8 "bc"
+copy:   2       16->20 "_a"
+pack:   8,  41  64->15 "stuvwxyz"
+copy:   0        0-> 1 ""
+pack:   2,  38  16-> 8 "qr"
+copy:   0        0-> 1 ""
+pack:   6,  36  48->13 "klmnop"
+copy:   0        0-> 1 ""
+pack:   8,  30  64->13 "cdefghij"
+copy:   0        0-> 1 ""
+pack:   2,  27  16-> 8 "ab"
+summary: 536 bits encoded in 387 bits, compression factor 1.38
+
+copy:   9       72->81 "_stuvwxyz"
+pack:   2,   3  16-> 8 "st"
+copy:  16      128->145 "_fghijklmnop_pqr"
+pack:   5,   6  40->11 "fghij"
+copy:   5       40->46 "_bcde"
+pack:   2,   3  16-> 8 "bc"
+copy:   2       16->20 "_a"
+pack:   8,  41  64->15 "stuvwxyz"
+copy:   0        0-> 1 ""
+pack:   2,  38  16-> 8 "qr"
+copy:   0        0-> 1 ""
+pack:   6,  36  48->13 "klmnop"
+copy:   0        0-> 1 ""
+pack:   8,  30  64->13 "cdefghij"
+copy:   0        0-> 1 ""
+pack:   2,  27  16-> 8 "ab"
+summary: 536 bits encoded in 380 bits, compression factor 1.41

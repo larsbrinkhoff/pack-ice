@@ -1,0 +1,113 @@
+copy           0:       1 bit
+copy           1:      10 bits
+copy   2 -     4:  4 + 8n bits
+copy   5 -     7:  6 + 8n bits
+copy   8 -    14:  9 + 8n bits
+copy  15 -   269: 17 + 8n bits
+copy 270 - 33037: 32 + 8n bits
+
+copy 0  1  2  3  4  5  6  7  8  9 10 11  12  13  14  15  16  17  18  19  20  21
+bits 1 10 20 28 36 46 54 62 73 81 89 97 105 113 121 137 145 153 161 169 177 185
+
+pack         2:  1 + 7-10 =  8-11 bits (compression = 2.0-1.45)
+pack         3:  2 + 7-14 =  9-16 bits (compression = 3.0-2.0)
+pack  4 -    5:  4 + 7-14 = 11-18 bits (compression = 4.0-1.77)
+pack  6 -    9:  6 + 7-14 = 13-20 bits (compression = 6.0-2.4)
+pack 10 - 1033: 14 + 7-14 = 21-28 bits (compression = big-2.86)
+
+----------------------------------------------------------------------
+abcdefghijxxxxxxxxxxxxxxijxxxxxxxxxxxxabcdefghixxxx
+         ^
+
+1: copy 0, pack 2, copy 0, pack 8
+
+   copy 0: 1 bit
+   pack 2: 8-11 bits
+   copy 0: 1 bit
+   pack 8: 12-20 bits
+
+   1 + 8-11 + 1 + 12 = 22-25
+
+2: copy 1, pack 9
+
+   copy 1: 10 bits
+   pack 9: 12-20 bits
+
+   10 + 12 = 22
+----------------------------------------------------------------------
+abcdefghij1xxxxxxxxxxxxxxijxxxxxxxxxxxxabcdefghixxxx
+          ^
+
+1: copy 1, pack 2, copy 0, pack 8
+
+   copy 1: 10 bits
+   pack 2: 8-11 bits
+   copy 0: 1 bit
+   pack 8: 12-20 bits
+
+   10 + 8-11 + 1 + 12 = 31-34
+
+2: copy 2, pack 9
+
+   copy 2: 20 bits
+   pack 9: 12-20 bits
+
+   20 + 12 = 32
+----------------------------------------------------------------------
+abcdefghij12xxxxxxxxxxxxxxijxxxxxxxxxxxxabcdefghixxxx
+           ^
+
+1: copy 2, pack 2, copy 0, pack 8
+
+   copy 2: 20 bits
+   pack 2: 8-11 bits
+   copy 0: 1 bit
+   pack 8: 12-20 bits
+
+   20 + 8-11 + 1 + 12 = 41-44
+
+2: copy 3, pack 9
+
+   copy 3: 28 bits
+   pack 9: 12-20 bits
+
+   28 + 12 = 40
+----------------------------------------------------------------------
+abcdefghij123xxxxxxxxxxxxxxijxxxxxxxxxxxxabcdefghixxxx
+            ^
+
+1: copy 3, pack 2, copy 0, pack 8
+
+   copy 3: 28 bits
+   pack 2: 8-11 bits
+   copy 0: 1 bit
+   pack 8: 12-20 bits
+
+   28 + 8-11 + 1 + 12 = 49-52
+
+2: copy 4, pack 9
+
+   copy 4: 36 bits
+   pack 9: 12-20 bits
+
+   36 + 12 = 48
+----------------------------------------------------------------------
+abcdefghij1234xxxxxxxxxxxxxxijxxxxxxxxxxxxabcdefghixxxx
+             ^
+
+1: copy 4, pack 2, copy 0, pack 8
+
+   copy 4: 36 bits
+   pack 2: 8-11 bits
+   copy 0: 1 bit
+   pack 8: 12-20 bits
+
+   36 + 8-11 + 1 + 12 = 57-60
+
+2: copy 5, pack 9
+
+   copy 5: 46 bits
+   pack 9: 12-20 bits
+
+   46 + 12 = 58
+----------------------------------------------------------------------

@@ -59,8 +59,6 @@ search_string (state_t *state, int *ret_length)
 	     state->unpacked[-length - 1];
 	   length++)
 	{
-	  if (offset >= 574 && length == 2)
-	    break;
 	  if (length == 1033)
 	    break;
 	}
@@ -288,12 +286,13 @@ analyze (state_t *state, int level)
   int max_copy_direct_length;
   int max_pack_string_length;
   int max_pack_string_offset;
-  double max_compression;
+  double max_compression, current_compression;
   int i;
 
   char max_copy_direct[100];
   char max_pack_string[100];
 
+  current_compression = 1.0;
   while (state->unpacked > state->unpacked_stop)
     {
       max_compression = 0;
@@ -326,7 +325,20 @@ analyze (state_t *state, int level)
 	    (double)(new_state.unpacked_start - new_state.unpacked) /
 	    (double)(new_state.packed_start - new_state.packed);
       
-	  if (compression > max_compression)
+	  if (compression > current_compression) /* max_compression) */
+	    {
+	      max_compression = compression;
+	      max_copy_direct_length = i;
+	      max_pack_string_length = length;
+	      max_pack_string_offset = offset;
+	      if (i > 0)
+		sprintf (max_copy_direct, "copy_direct: length = %d\n", i);
+	      else
+		max_copy_direct[0] = 0;
+	      sprintf (max_pack_string,   "pack_string: length = %d, offset = %d\n", length, offset);
+	      break;
+	    }
+	  else if (compression > max_compression)
 	    {
 	      max_compression = compression;
 	      max_copy_direct_length = i;
@@ -343,6 +355,12 @@ analyze (state_t *state, int level)
       copy_direct (state, max_copy_direct_length);
       pack_string (state, max_pack_string_length, max_pack_string_offset);
       fprintf (stderr, "%s%s", max_copy_direct, max_pack_string);
+      current_compression = max_compression;
+      fprintf (stderr, "%d bytes, %2.0f%% done, compression = %2.2f\n",
+	       state->unpacked_start - state->unpacked,
+	       100.0 * (double)(state->unpacked_start - state->unpacked) /
+	               (double)(state->unpacked_start - state->unpacked_stop),
+	       current_compression);
     }
 
   fprintf (stderr, "foo\n");

@@ -6,6 +6,8 @@
 #include <stdio.h>
 #endif
 
+#ifndef NEW_ALGORITHM
+
 typedef struct ice_crunch_state
 {
   int last_copy_direct;
@@ -141,6 +143,52 @@ search_string (state_t *state, int *ret_length, int level)
   int offset, length, max_offset, max_length;
   double compression, max_compression;
 
+#if 1
+  max_length = 1;
+  max_offset = 0;
+  max_compression = 0.0;
+
+  for (offset = -1; offset < 4383; offset++)
+    {
+      int uncompressed_bits;
+      int compressed_bits;
+      int X = offset == -1 ? 0 : -1;
+
+      if (offset == -1 && state->unpacked == state->unpacked_start)
+	break;
+      if (state->unpacked + offset > state->unpacked_start)
+	break;
+
+      for (length = 0;
+	   state->unpacked[offset - length + X] ==
+	     state->unpacked[-length + X];
+	   length++)
+	{
+	  if (state->unpacked - length + X < state->unpacked_stop)
+	    break;
+	  if (length == offset)
+	    break;
+	  if (length == 1033)
+	    break;
+	}
+
+      if (length < 2)
+	continue;
+      if (length == 2 && offset >= 574)
+	continue;
+
+      uncompressed_bits = 8 * length;
+      compressed_bits = pack_bits (length, offset);
+      compression = (double)uncompressed_bits / (double)compressed_bits;
+
+      if (compression > max_compression)
+	{
+	  max_compression = compression;
+	  max_length = length;
+	  max_offset = offset;
+	}
+    }
+#else
   {
     int i;
 
@@ -165,43 +213,6 @@ search_string (state_t *state, int *ret_length, int level)
       }
   }
 
-#if 1
-  for (offset = 1; offset < 4383; offset++)
-    {
-      int uncompressed_bits;
-      int compressed_bits;
-
-      if (state->unpacked + offset > state->unpacked_start)
-	break;
-
-      for (length = 0;
-	   state->unpacked[offset - length - 1] ==
-	     state->unpacked[-length - 1];
-	   length++)
-	{
-	  if (length == offset)
-	    break;
-	  if (length == 1033)
-	    break;
-	}
-
-      if (length < 2)
-	continue;
-      if (length == 2 && offset >= 574)
-	continue;
-
-      uncompressed_bits = 8 * length;
-      compressed_bits = pack_bits (length, offset);
-      compression = (double)uncompressed_bits / (double)compressed_bits;
-
-      if (compression > max_compression)
-	{
-	  max_compression = compression;
-	  max_length = length;
-	  max_offset = offset;
-	}
-    }
-#else
   for (offset = 1; offset < 4383; offset++)
     {
       int uncompressed_bits;
@@ -609,6 +620,114 @@ level = 2;
   state->packed -= 4;
   putinfo (state->packed, ICE_MAGIC);
 }
+
+#else /* NEW_ALGORITHM */
+
+#define COPY (-2)
+
+typedef struct
+{
+  char *byte;
+  int length;
+} data_t;
+
+typedef struct
+{
+  int length;
+  int offset;
+  int bits;
+} info_t;
+
+static void
+analyze_here (data_t *data, info_t *info, int i)
+{
+  int length, offset;
+  int best_length;
+  int best_offset;
+  int best_bits;
+
+  if (i == 0)
+    {
+      info[0].length = 1;
+      info[0].offset = COPY;
+      info[0].bits = copy_bits (1);
+      return;
+    }
+
+  if (info[i - 1].offset == COPY)
+    info[i].length = info[i - 1].length + 1;
+  else
+    info[i].length = 1;
+  best_offset = COPY;
+  best_bits = info[i - 1].bits + copy_bits (info[i].length);
+
+  for (offset = 1; offset < 4383; offset++)
+    {
+      int X = offset == -1 ? 2 : 1;
+
+      if (offset == -1 && i == length - 1)
+	break;
+      if (i + offset > data->length)
+	break;
+      if (offset == 0)
+	break;
+
+      for (length = 1;
+	   data->byte[i + offset + X - length] == data->byte[i + X - length];
+	   length++)
+	{
+	  if (length > offset)
+	    break;
+	  if (length == 1034)
+	    break;
+	  if (length < 2)
+	    continue;
+	  if (length == 2 && offset >= 574)
+	    continue;
+	  if (i + X - length < 0)
+	    break;
+
+	  bits = info[i - 1].bits + pack_bits (length, offset);
+
+	  if (bits < best_bits)
+	    {
+	      best_bits = bits;
+	      best_length = length;
+	      best_offset = offset;
+	    }
+	}
+    }
+
+  info[i].length = best_length;
+  info[i].offset = best_offset;
+  info[i].bits = best_bits;
+}
+
+static void
+analyze (data_t *data, info_t *info)
+{
+  int i;
+
+  for (i = 0; i < unpacked_length; i++)
+    {
+      analyze_here (data, info, i);
+    }
+}
+
+static void
+crunch (...)
+{
+  info_t *info;
+
+  info = malloc (unpacked_length * sizeof (info_t));
+  if (info == NULL)
+    exit (1);
+
+  analyze (data, info);
+  compress (data, info, packed);
+}
+
+#endif /* NEW_ALGORITHM */
 
 char *
 ice_crunch (char *data, size_t length, int level)

@@ -237,38 +237,39 @@ no_crunch (state_t *state)
       state->unpacked -= length;
       memcpy (state->packed, state->unpacked, length);
 
-      {
-	char *string;
-	int offset;
+      if (state->unpacked > state->unpacked_stop)
+	{
+	  char *string;
+	  int offset;
 
-	string = search_string_2 (state);
-	if (string == NULL)
-	  {
-	    fprintf (stderr, "bollox\n");
-	    exit (1);
-	  }
+	  string = search_string_2 (state);
+	  if (string == NULL)
+	    {
+	      fprintf (stderr, "bollox\n");
+	      exit (1);
+	    }
 
-	write_bit (state, 0); /* length == 2 */
+	  write_bit (state, 0); /* length == 2 */
 
-	offset = string - state->unpacked;
-	if (offset < 63)
-	  {
-	    write_bit (state, 0);
-	    write_bits (state, 6, offset + 1);
-	  }
-	else if (offset < 575)
-	  {
-	    write_bit (state, 1);
-	    write_bits (state, 9, offset - 63);
-	  }
-	else
-	  {
-	    fprintf (stderr, "bugger\n");
-	    exit (1);
-	  }
+	  offset = string - state->unpacked;
+	  if (offset < 63)
+	    {
+	      write_bit (state, 0);
+	      write_bits (state, 6, offset + 1);
+	    }
+	  else if (offset < 575)
+	    {
+	      write_bit (state, 1);
+	      write_bits (state, 9, offset - 63);
+	    }
+	  else
+	    {
+	      fprintf (stderr, "bugger\n");
+	      exit (1);
+	    }
 
-	state->unpacked -= 2;
-      }
+	  state->unpacked -= 2;
+	}
     }
 }
 

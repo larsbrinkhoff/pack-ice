@@ -10,6 +10,7 @@ char *me;
 static void
 melt (char *ice_file)
 {
+  size_t crunched_length;
   char header[ICE_HEADER_SIZE];
   char *destination;
   char *source;
@@ -60,11 +61,7 @@ melt (char *ice_file)
       goto free_source;
     }
 
-  if (ice_decrunch (source, destination) == 0)
-    {
-      fprintf (stderr, "%s: %s: decrunch error\n", me, ice_file);
-      goto free_destination;
-    }
+  crunched_length = ice_decrunch (source, destination);
 
   file = strdup (ice_file);
   if (file == NULL)
@@ -87,8 +84,8 @@ melt (char *ice_file)
 
   fclose (f);
   f = f2;
-  
-  if (fwrite (destination, ice_decrunched_length (header), 1, f) != 1)
+
+  if (fwrite (destination, 1, crunched_length, f) != crunched_length)
     {
       fprintf (stderr, "%s: %s: write error: %s\n",
 	       me, file, strerror (errno));

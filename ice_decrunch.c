@@ -1,6 +1,8 @@
 #include "ice_private.h"
 
+#ifdef ICE_DEBUG
 #include <stdio.h>
+#endif
 
 typedef struct ice_decrunch_state
 {
@@ -22,10 +24,6 @@ init_state (state_t *state, char *data, char *destination)
   state->packed = data + ice_crunched_length (data);
   packed_start = state->packed;
   state->bits = (unsigned char)*--state->packed;
-#if 0
-  fprintf (stderr, "bits: %02x @ %d\n", state->bits,
-	   packed_start - state->packed);
-#endif
   unpacked_length = ice_decrunched_length (data);
   state->unpacked = destination + unpacked_length;
 
@@ -51,10 +49,6 @@ get_bit (state_t *state)
   if (state->bits == 0)
     {
       state->bits = *--state->packed;
-#if 0
-      fprintf (stderr, "bits: %02x @ %d\n", state->bits,
-	       packed_start - state->packed);
-#endif
       bit = (state->bits & 0x80) != 0;
       state->bits = ((state->bits << 1) & 0xff) + 1;
     }
@@ -168,15 +162,14 @@ normal_bytes (state_t *state)
       if (get_bit (state))
 	{
 	  length = get_direct_length (state);
+#ifdef ICE_DEBUG
 	  fprintf (stderr, "copy: length = %d\n", length);
+#endif
 	  state->packed -= length;
 	  state->unpacked -= length;
 
 	  if (state->unpacked < state->unpacked_stop)
-	    {
-	      fprintf (stderr, "out of bounds\n");
-	      exit (1);
-	    }
+	    exit (1);
 	  memcpy (state->unpacked, state->packed, length);
 	}
 
@@ -185,16 +178,17 @@ normal_bytes (state_t *state)
 	  length = get_depack_length (state);
 	  offset = get_depack_offset (state, length);
 
-	  fprintf (stderr, "pack: length = %d, offset = %d\n",
-		   length, offset >= 0 ? offset + length : offset + length - 2);
+#ifdef ICE_DEBUG
+	  fprintf (stderr,
+		   "pack: length = %d, offset = %d\n",
+		   length,
+		   offset >= 0 ? offset + length : offset + length - 2);
+#endif
 
 	  state->unpacked -= length;
 
 	  if (state->unpacked < state->unpacked_stop)
-	    {
-	      fprintf (stderr, "out of bounds\n");
-	      exit (1);
-	    }
+	    exit (1);
 	  memcpybwd (state->unpacked,
 		     state->unpacked + length + offset,
 		     length);

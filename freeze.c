@@ -35,7 +35,7 @@ freeze (char *file)
       goto close_file;
     }
 
-  if (fread (source, length, 1, f) != 1)
+  if (fread (source, 1, length, f) != length)
     {
       fprintf (stderr, "%s: %s: read error: %s\n",
 	       me, file, strerror (errno));
@@ -49,7 +49,7 @@ freeze (char *file)
       goto free_source;
     }
 
-  ice_file = malloc (strlen (file) + 4);
+  ice_file = malloc (strlen (file) + 5);
   if (ice_file == NULL)
     {
       fprintf (stderr, "%s: %s: out of memory\n", me, file);

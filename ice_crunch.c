@@ -543,7 +543,7 @@ debug_print_info (state_t *state, const char *name, int length,
 static void
 crunch (state_t *state, int level)
 {
-  while (state->unpacked > state->unpacked_stop)
+  do
     {
       int copy_length, pack_length, pack_offset;
 
@@ -557,6 +557,7 @@ level = 2;
       debug_print_info (state, "pack", pack_length, pack_offset,
 			pack_bits (pack_length, pack_offset));
     }
+  while (state->unpacked > state->unpacked_stop);
 
 #ifdef ICE_DEBUG
   fprintf (stderr,

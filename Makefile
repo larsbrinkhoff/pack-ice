@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -g
+CFLAGS = -Wall -g -DICE_DEBUG
 
 PROGS = icecat freeze melt
 ICELIB = libice.a

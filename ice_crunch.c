@@ -35,6 +35,7 @@ init_state (state_t *state, char *data, size_t length, void *packed_start)
   state->write_bits_here = NULL;
   state->bits = 1;
   state->bits_written = 0;
+  state->bits_copied = 0;
 }
 
 static void
@@ -147,16 +148,12 @@ search_string (state_t *state, int *ret_length, int level)
 	  break;
       }
 
-    if (i > 0)
+    if (i > 1)
       {
 	max_length = i;
 	max_offset = -1;
 	max_compression = 
 	  (double)(8 * i) / (double)pack_bits (i, -1);
-
-#if 0
-	fprintf (stderr, "repeat: length = %d, %2.2f\n", i, max_compression);
-#endif
       }
     else
       {
@@ -182,7 +179,10 @@ search_string (state_t *state, int *ret_length, int level)
 	    break;
 	}
 
-      if (level > 0)
+      if (length < 2)
+	continue;
+
+      if (level > 0  && state->unpacked - length > state->unpacked_stop)
 	{
 	  int copy_length, pack_length, pack_offset;
 	  state_t new_state = *state;
@@ -208,6 +208,7 @@ search_string (state_t *state, int *ret_length, int level)
 	  max_compression = compression;
 	  max_length = length;
 	  max_offset = offset;
+
 	  if (length == 1033)
 	    break;
 	}
@@ -229,18 +230,10 @@ write_bit (state_t *state, int bit)
       if (state->write_bits_here == NULL)
 	{
 	  *--state->packed = state->bits & 0xff;
-#if 0
-	  fprintf (stderr, "bits: %02x @ %d\n", state->bits & 0xff,
-		   state->packed_start - state->packed);
-#endif
 	}
       else
 	{
 	  *state->write_bits_here = state->bits & 0xff;
-#if 0
-	  fprintf (stderr, "bits: %02x @ %d.\n", state->bits & 0xff,
-		   state->packed_start - state->write_bits_here);
-#endif
 	  state->write_bits_here = NULL;
 	}
       state->bits = 1;
@@ -377,6 +370,8 @@ pack_string (state_t *state, int length, int offset)
 static void
 copy_direct (state_t *state, int length)
 {
+  state->bits_copied += 8 * length;
+
   if (length == 0)
     {
       write_bit (state, 0);
@@ -462,35 +457,20 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
       if (new_state.unpacked - i < new_state.unpacked_stop)
 	break;
 
-#if 0
-      copy_direct (&new_state, i);
-#else
-      new_state.packed -= 1;
-      new_state.packed -= i;
       new_state.unpacked -= i;
       uncompressed_bits = 8 * i;
       compressed_bits = copy_bits (i);
-#endif
+
       offset = search_string (&new_state, &length, level - 1);
       if (length < 2)
 	continue;
-#if 0
-      pack_string (&new_state, length, offset);
-#else
-      new_state.packed -= 2;
+
       new_state.unpacked -= length;
       uncompressed_bits += 8 * length;
       compressed_bits += pack_bits (length, offset);
-#endif
 
       compression = (double)uncompressed_bits /
 	            (double)compressed_bits;
-
-#if 0
-      fprintf (stderr,
-"? copy: length = %d; pack: length = %d, offset = %d; u = %d, c = %d, %2.2f\n",
-	       i, length, offset, uncompressed_bits, compressed_bits, compression);
-#endif
 
       if (compression > max_compression)
 	{
@@ -500,40 +480,47 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
 	  max_pack_offset = offset;
 	  N = i + 2;
 	}
-      continue;
-
-#if 0
-      compression =
-	(double)(new_state.unpacked_start - new_state.unpacked) /
-	(double)(new_state.packed_start - new_state.packed);
-#else
-      compression = (double)uncompressed_bits / (double)compressed_bits;
-#endif
-      
-#if 0
-      if (compression > current_compression) /* max_compression) */
-#else
-      if (0) //compression > 1.0)
-#endif
-	{
-	  max_compression = compression;
-	  max_copy_length = i;
-	  max_pack_length = length;
-	  max_pack_offset = offset;
-	  break;
-	}
-      else if (compression > max_compression)
-	{
-	  max_compression = compression;
-	  max_copy_length = i;
-	  max_pack_length = length;
-	  max_pack_offset = offset;
-	}
     }
 
   *copy_length = max_copy_length;
   *pack_length = max_pack_length;
   *pack_offset = max_pack_offset;
+}
+
+static void
+debug_print_info (state_t *state, const char *name, int length,
+		  int offset, int bits)
+{
+  int i;
+
+  if (length == 0 && offset >= -1)
+    return;
+
+  fprintf (stderr, "%s: %3d", name, length);
+  if (offset < -1)
+    fprintf (stderr, "      ");
+  else
+    fprintf (stderr, ", %3d ", offset);
+  fprintf (stderr, "%3d->%2d \"", 8 * length, bits);
+  for (i = 0; i < length; i++)
+    {
+      char c = state->unpacked[i];
+      switch (c)
+	{
+	case '\n':
+	  fprintf (stderr, "\\n");
+	  break;
+	case '\t':
+	  fprintf (stderr, "\\t");
+	  break;
+	default:
+	  if (c < 32 || c >= 127)
+	    fprintf (stderr, "\\x%02x", c);
+	  else
+	    fputc (c, stderr);
+	}
+    }
+  fprintf (stderr, "\"\n");
 }
 
 static void
@@ -545,15 +532,20 @@ crunch (state_t *state, int level)
 
       analyze (state, level, &copy_length, &pack_length, &pack_offset);
 
-      if (copy_length > 0)
-	fprintf (stderr, "copy: length = %d\n", copy_length);
-      if (pack_length > 0)
-	fprintf (stderr, "pack: length = %d, offset = %d\n",
-		 pack_length, pack_offset);
-
       copy_direct (state, copy_length);
+      debug_print_info (state, "copy", copy_length, -2,
+			copy_bits (copy_length));
       pack_string (state, pack_length, pack_offset);
+      debug_print_info (state, "pack", pack_length, pack_offset,
+			pack_bits (pack_length, pack_offset));
     }
+
+  fprintf (stderr,
+	   "summary: %d bits encoded in %d bits, compression factor %.2f\n",
+	   8 * state->unpacked_length,
+	   state->bits_written + state->bits_copied,
+	   (double)(8 * state->unpacked_length) /
+	   (double)(state->bits_written + state->bits_copied));
 
   flush_bits (state);
 

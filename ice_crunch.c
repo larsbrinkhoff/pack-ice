@@ -2,7 +2,7 @@
 #include <string.h>
 #include "ice_private.h"
 
-#define NEW_ALGORITHM
+#undef NEW_ALGORITHM
 
 #ifdef ICE_DEBUG
 #include <stdio.h>
@@ -674,18 +674,76 @@ analyze_this (state_t *state, info_t *info, int i)
   int best_offset;
   int best_bits;
   int bits;
+  int j;
 
-  if (info[i - 1].offset == COPY)
-    best_length = info[i - 1].length + 1;
-  else
-    best_length = 1;
-  best_bits = info[i - best_length].bits + copy_bits (best_length);
+  best_bits = 1000000000;
+  for (j = 0; j <= 2; j++)
+    {
+      if (info[i - 1].offset == COPY)
+	length = info[i - 1].length + j;
+      else
+	length = j;
+
+      if (length < 1)
+	continue;
+      if (i - length < -1)
+	break;
+
+      if (info[i - length].offset == COPY)
+	length += info[i - length].length;
+
+      bits = info[i - length].bits + copy_bits (length);
+
+      if (bits < best_bits)
+	{
+	  best_bits = bits;
+	  best_length = length;
+	  best_offset = offset;
+	}
+    }
   best_offset = COPY;
 
-  for (offset = -1; offset < 4383; offset++)
+  if (i < state->unpacked_length - 1)
     {
-      int X = offset == -1 ? 2 : 1;
+      offset = -1;
 
+      if (info[i - 1].offset == -1 &&
+	  state->unpacked_stop[i] == state->unpacked_stop[i - 1] &&
+	  state->unpacked_stop[i] == state->unpacked_stop[i + 1])
+	{
+	  length = info[i - 1].length + 1;
+	}
+      else
+	{
+	  for (length = 0;
+	       state->unpacked_stop[i - length] ==
+		 state->unpacked_stop[i + 1 - length];
+	       length++)
+	    {
+	      if (i - length < 0)
+		break;
+	      if (length == 1033)
+		break;
+	    }
+	}
+
+      if (length >= 2)
+	{
+	  bits = info[i - length].bits + pack_bits (length, offset);
+	  if (info[i - length].offset != COPY && i - length > -1)
+	    bits += copy_bits (0);
+
+	  if (bits < best_bits)
+	    {
+	      best_bits = bits;
+	      best_length = length;
+	      best_offset = offset;
+	    }
+	}
+    }
+
+  for (offset = 1; offset < 4383; offset++)
+    {
       if (offset == -1 && i == state->unpacked_length - 1)
 	continue;
       if (i + offset > state->unpacked_length)
@@ -694,8 +752,8 @@ analyze_this (state_t *state, info_t *info, int i)
 	continue;
 
       for (length = 1;
-	   state->unpacked_stop[i + offset + X - length] ==
-	     state->unpacked_stop[i + X - length];
+	   state->unpacked_stop[i + offset + 1 - length] ==
+	     state->unpacked_stop[i + 1 - length];
 	   length++)
 	{
 	  if (offset == -1 && i - length < -1)
@@ -708,11 +766,11 @@ analyze_this (state_t *state, info_t *info, int i)
 	    continue;
 	  if (length == 2 && offset >= 574)
 	    continue;
-	  if (i + X - length < 0)
+	  if (i + 1 - length < 0)
 	    break;
 
 	  bits = info[i - length].bits + pack_bits (length, offset);
-	  if (info[i - length].offset == COPY)
+	  if (info[i - length].offset != COPY && i - length > -1)
 	    bits += copy_bits (0);
 
 	  if (bits < best_bits)
@@ -745,7 +803,6 @@ analyze (state_t *state, info_t *info)
   for (i = 1; i < state->unpacked_length; i++)
     {
       analyze_this (state, info, i);
-      fprintf (stderr, "%d: %d, %d\n", i, info[i].length, info[i].offset);
     }
 }
 

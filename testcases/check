@@ -1,0 +1,23 @@
+#!/bin/sh
+
+for i in ???; do
+    cp $i x$i
+    if ../freeze x$i; then
+        if cmp $i.ice x$i.ice; then
+	    if ../melt x$i.ice; then
+		if cmp x$i $i; then
+		    echo $i: ok
+		else
+		    echo $i: melt failed
+		fi
+	    else
+		echo $i: melt error
+	    fi
+        else
+	    echo $i: freeze failed
+        fi
+    else
+	echo $i: freeze error
+    fi
+    rm -f x$i x$i.ice
+done

@@ -165,7 +165,7 @@ search_string (state_t *state, int *ret_length, int level)
 
   for (offset = 1; offset < 4383; offset++)
     {
-      if (state->unpacked + offset >= state->unpacked_start)
+      if (state->unpacked + offset > state->unpacked_start)
 	break;
 
       for (length = 0;
@@ -182,7 +182,7 @@ search_string (state_t *state, int *ret_length, int level)
       if (length < 2)
 	continue;
 
-      if (level > 0  && state->unpacked - length > state->unpacked_stop)
+      if (0) //level > 0  && state->unpacked - length > state->unpacked_stop)
 	{
 	  int copy_length, pack_length, pack_offset;
 	  state_t new_state = *state;
@@ -208,13 +208,7 @@ search_string (state_t *state, int *ret_length, int level)
 	  max_compression = compression;
 	  max_length = length;
 	  max_offset = offset;
-
-	  if (length == 1033)
-	    break;
 	}
-
-      if (offset == -1)
-        offset++;
     }
 
   *ret_length = max_length;
@@ -438,12 +432,14 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
   int max_copy_length;
   int max_pack_length;
   int max_pack_offset;
-  double max_compression, current_compression;
+  double max_compression;
   int i, N;
+
+  if (level == 0)
+    return;
 
   max_copy_length = state->unpacked - state->unpacked_stop;
   max_pack_length = 0;
-  current_compression = 1.0;
 
   max_compression = 0;
   N = 33038;
@@ -458,19 +454,36 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
 	break;
 
       new_state.unpacked -= i;
-      uncompressed_bits = 8 * i;
-      compressed_bits = copy_bits (i);
 
       offset = search_string (&new_state, &length, level - 1);
       if (length < 2)
 	continue;
 
       new_state.unpacked -= length;
-      uncompressed_bits += 8 * length;
-      compressed_bits += pack_bits (length, offset);
+      uncompressed_bits = 8 * (i + length);
+      compressed_bits = copy_bits (i) + pack_bits (length, offset);
+
+      if (level > 1)
+      {
+	int clen, plen, poff;
+	analyze (&new_state, level - 1, &clen, &plen, &poff);
+fprintf (stderr,
+	 " clen = %d, plen = %d, poff = %d\n", clen, plen, poff);
+	if (clen > 0 || plen > 0)
+	  {
+	    uncompressed_bits += 8 * (clen + plen);
+	    compressed_bits += copy_bits (clen) + pack_bits (plen, poff);
+	  }
+      }
 
       compression = (double)uncompressed_bits /
 	            (double)compressed_bits;
+
+fprintf (stderr,
+	 "  ubits = %d, cbits = %d, compr = %.2f\n",
+	 uncompressed_bits,
+	 compressed_bits,
+	 compression);
 
       if (compression > max_compression)
 	{
@@ -530,6 +543,7 @@ crunch (state_t *state, int level)
     {
       int copy_length, pack_length, pack_offset;
 
+level = 2;
       analyze (state, level, &copy_length, &pack_length, &pack_offset);
 
       copy_direct (state, copy_length);
@@ -543,7 +557,7 @@ crunch (state_t *state, int level)
   fprintf (stderr,
 	   "summary: %d bits encoded in %d bits, compression factor %.2f\n",
 	   8 * state->unpacked_length,
-	   state->bits_written + state->bits_copied,
+	   state->bits_written - 1 + state->bits_copied,
 	   (double)(8 * state->unpacked_length) /
 	   (double)(state->bits_written + state->bits_copied));
 

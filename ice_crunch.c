@@ -498,7 +498,7 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
 	  max_copy_length = i;
 	  max_pack_length = length;
 	  max_pack_offset = offset;
-	  break; //N = i + 3;
+	  N = i + 2;
 	}
       continue;
 

@@ -21,9 +21,11 @@ init_state (state_t *state, char *data, char *destination)
   state->unpacked_stop = destination;
   state->packed = data + ice_crunched_length (data);
   packed_start = state->packed;
-  state->bits = *--state->packed;
-      fprintf (stderr, "bits: %02x @ %d\n", state->bits,
-	       packed_start - state->packed);
+  state->bits = (unsigned char)*--state->packed;
+#if 0
+  fprintf (stderr, "bits: %02x @ %d\n", state->bits,
+	   packed_start - state->packed);
+#endif
   unpacked_length = ice_decrunched_length (data);
   state->unpacked = destination + unpacked_length;
 
@@ -49,8 +51,10 @@ get_bit (state_t *state)
   if (state->bits == 0)
     {
       state->bits = *--state->packed;
+#if 0
       fprintf (stderr, "bits: %02x @ %d\n", state->bits,
 	       packed_start - state->packed);
+#endif
       bit = (state->bits & 0x80) != 0;
       state->bits = ((state->bits << 1) & 0xff) + 1;
     }
@@ -164,9 +168,15 @@ normal_bytes (state_t *state)
       if (get_bit (state))
 	{
 	  length = get_direct_length (state);
-	  fprintf (stderr, "copy_direct: length = %d\n", length);
+	  fprintf (stderr, "copy: length = %d\n", length);
 	  state->packed -= length;
 	  state->unpacked -= length;
+
+	  if (state->unpacked < state->unpacked_stop)
+	    {
+	      fprintf (stderr, "out of bounds\n");
+	      exit (1);
+	    }
 	  memcpy (state->unpacked, state->packed, length);
 	}
 
@@ -174,9 +184,17 @@ normal_bytes (state_t *state)
 	{
 	  length = get_depack_length (state);
 	  offset = get_depack_offset (state, length);
-	  fprintf (stderr, "pack_string: length = %d, offset = %d\n",
-		   length, offset);
+
+	  fprintf (stderr, "pack: length = %d, offset = %d\n",
+		   length, offset >= 0 ? offset + length : offset + length - 2);
+
 	  state->unpacked -= length;
+
+	  if (state->unpacked < state->unpacked_stop)
+	    {
+	      fprintf (stderr, "out of bounds\n");
+	      exit (1);
+	    }
 	  memcpybwd (state->unpacked,
 		     state->unpacked + length + offset,
 		     length);

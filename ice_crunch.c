@@ -698,6 +698,8 @@ analyze_this (state_t *state, info_t *info, int i)
 	     state->unpacked_stop[i + X - length];
 	   length++)
 	{
+	  if (offset == -1 && i - length < -1)
+	    break;
 	  if (length > offset && offset != -1)
 	    break;
 	  if (length == 1034)
@@ -743,6 +745,7 @@ analyze (state_t *state, info_t *info)
   for (i = 1; i < state->unpacked_length; i++)
     {
       analyze_this (state, info, i);
+      fprintf (stderr, "%d: %d, %d\n", i, info[i].length, info[i].offset);
     }
 }
 

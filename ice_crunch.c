@@ -2,7 +2,9 @@
 #include <string.h>
 #include "ice_private.h"
 
+#ifdef ICE_DEBUG
 #include <stdio.h>
+#endif
 
 typedef struct ice_crunch_state
 {
@@ -148,7 +150,7 @@ search_string (state_t *state, int *ret_length, int level)
 	  break;
       }
 
-    if (i > 1)
+    if (i > 1 && state->unpacked < state->unpacked_start)
       {
 	max_length = i;
 	max_offset = -1;
@@ -270,7 +272,6 @@ pack_string (state_t *state, int length, int offset)
     }
   if (length < 2)
     {
-      fprintf (stderr, "shyte\n");
       exit (1);
     }
   else if (length < 3)
@@ -307,7 +308,6 @@ pack_string (state_t *state, int length, int offset)
     }
   else
     {
-      fprintf (stderr, "bollox\n");
       exit (1);
     }
 
@@ -328,7 +328,6 @@ pack_string (state_t *state, int length, int offset)
 	}
       else
 	{
-	  fprintf (stderr, "bugger\n");
 	  exit (1);
 	}
     }
@@ -353,7 +352,6 @@ pack_string (state_t *state, int length, int offset)
 	}
       else
 	{
-	  fprintf (stderr, "shit\n");
 	  exit (1);
 	}
     }
@@ -467,8 +465,11 @@ analyze (state_t *state, int level, int *copy_length, int *pack_length,
       {
 	int clen, plen, poff;
 	analyze (&new_state, level - 1, &clen, &plen, &poff);
-fprintf (stderr,
-	 " clen = %d, plen = %d, poff = %d\n", clen, plen, poff);
+#ifdef ICE_DEBUG
+	fprintf (stderr,
+		 " clen = %d, plen = %d, poff = %d\n",
+		 clen, plen, poff);
+#endif
 	if (clen > 0 || plen > 0)
 	  {
 	    uncompressed_bits += 8 * (clen + plen);
@@ -479,11 +480,13 @@ fprintf (stderr,
       compression = (double)uncompressed_bits /
 	            (double)compressed_bits;
 
-fprintf (stderr,
-	 "  ubits = %d, cbits = %d, compr = %.2f\n",
-	 uncompressed_bits,
-	 compressed_bits,
-	 compression);
+#ifdef ICE_DEBUG
+      fprintf (stderr,
+	       "  ubits = %d, cbits = %d, compr = %.2f\n",
+	       uncompressed_bits,
+	       compressed_bits,
+	       compression);
+#endif
 
       if (compression > max_compression)
 	{
@@ -504,8 +507,8 @@ static void
 debug_print_info (state_t *state, const char *name, int length,
 		  int offset, int bits)
 {
+#ifdef ICE_DEBUG
   int i;
-
   if (length == 0 && offset >= -1)
     return;
 
@@ -534,6 +537,7 @@ debug_print_info (state_t *state, const char *name, int length,
 	}
     }
   fprintf (stderr, "\"\n");
+#endif
 }
 
 static void
@@ -554,12 +558,14 @@ level = 2;
 			pack_bits (pack_length, pack_offset));
     }
 
+#ifdef ICE_DEBUG
   fprintf (stderr,
 	   "summary: %d bits encoded in %d bits, compression factor %.2f\n",
 	   8 * state->unpacked_length,
 	   state->bits_written - 1 + state->bits_copied,
 	   (double)(8 * state->unpacked_length) /
 	   (double)(state->bits_written + state->bits_copied));
+#endif
 
   flush_bits (state);
 

@@ -7,7 +7,7 @@ getinfo (char *data)
   int i;
 
   for (i = 0; i < 4; i++)
-    info = (info << 8) | *data++;
+    info = (info << 8) | (unsigned char)*data++;
 
   return info;
 }

@@ -42,7 +42,7 @@ freeze (char *file)
       goto free_source;
     }
 
-  destination = ice_crunch (source, length, 0);
+  destination = ice_crunch (source, length, 1);
   if (destination == NULL)
     {
       fprintf (stderr, "%s: %s: crunch error\n", me, file);

@@ -1,5 +1,7 @@
 #include "ice_private.h"
 
+#include <stdio.h>
+
 typedef struct ice_decrunch_state
 {
   char *unpacked_stop;
@@ -8,7 +10,7 @@ typedef struct ice_decrunch_state
   int bits;
 } state_t;
 
-char *packed_start;
+static char *packed_start;
 
 static size_t
 init_state (state_t *state, char *data, char *destination)
@@ -20,6 +22,8 @@ init_state (state_t *state, char *data, char *destination)
   state->packed = data + ice_crunched_length (data);
   packed_start = state->packed;
   state->bits = *--state->packed;
+      fprintf (stderr, "bits: %02x @ %d\n", state->bits,
+	       packed_start - state->packed);
   unpacked_length = ice_decrunched_length (data);
   state->unpacked = destination + unpacked_length;
 
@@ -45,6 +49,8 @@ get_bit (state_t *state)
   if (state->bits == 0)
     {
       state->bits = *--state->packed;
+      fprintf (stderr, "bits: %02x @ %d\n", state->bits,
+	       packed_start - state->packed);
       bit = (state->bits & 0x80) != 0;
       state->bits = ((state->bits << 1) & 0xff) + 1;
     }
@@ -158,6 +164,7 @@ normal_bytes (state_t *state)
       if (get_bit (state))
 	{
 	  length = get_direct_length (state);
+	  fprintf (stderr, "copy_direct: length = %d\n", length);
 	  state->packed -= length;
 	  state->unpacked -= length;
 	  memcpy (state->unpacked, state->packed, length);
@@ -167,6 +174,8 @@ normal_bytes (state_t *state)
 	{
 	  length = get_depack_length (state);
 	  offset = get_depack_offset (state, length);
+	  fprintf (stderr, "pack_string: length = %d, offset = %d\n",
+		   length, offset);
 	  state->unpacked -= length;
 	  memcpybwd (state->unpacked,
 		     state->unpacked + length + offset,

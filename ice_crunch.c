@@ -8,6 +8,7 @@ typedef struct ice_crunch_state
 {
   int last_copy_direct;
   size_t unpacked_length;
+  char *unpacked_start;
   char *unpacked_stop;
   char *unpacked;
   char *packed_start;
@@ -20,6 +21,7 @@ static void
 init_state (state_t *state, char *data, size_t length, void *packed_start)
 {
   state->unpacked_length = length;
+  state->unpacked_start = data + length;
   state->unpacked_stop = data;
   state->unpacked = data + length;
   state->packed_start = packed_start;
@@ -41,28 +43,40 @@ putinfo (char *data, size_t info)
     }
 }
 
-static size_t
-search_string (state_t *state, size_t *ret_length)
+static int
+search_string (state_t *state, int *ret_length)
 {
-  size_t offset, length, max_offset, max_length;
+  int offset, length, max_offset, max_length;
 
-  max_length = 0;
-  for (offset = 1; offset < 33000; offset++)
+  max_length = 1;
+  for (offset = 1; offset < 4383; offset++)
     {
-      for (length = 0;
-	   state->unpacked[offset - length] == state->unpacked[length];
-	   length++)
-	;
+      if (state->unpacked + offset >= state->unpacked_start)
+	break;
 
-      if (length > max_length)
+      for (length = 0;
+	   state->unpacked[offset - length - 1] ==
+	     state->unpacked[-length - 1];
+	   length++)
+	{
+	  if (offset >= 574 && length == 2)
+	    break;
+	  if (length == 1033)
+	    break;
+	}
+
+      if (length > max_length &&
+	  !(length == 2 && offset >= 574))
 	{
 	  max_length = length;
 	  max_offset = offset;
+	  if (length == 1033)
+	    break;
 	}
     }
 
-  *ret_length = length;
-  return offset;
+  *ret_length = max_length;
+  return max_offset;
 }
 
 void
@@ -74,17 +88,21 @@ write_bit (state_t *state, int bit)
       if (state->write_bits_here == NULL)
 	{
 	  *--state->packed = state->bits & 0xff;
+      fprintf (stderr, "bits: %02x @ %d\n", state->bits & 0xff,
+	       state->packed_start - state->packed);
 	}
       else
 	{
 	  *state->write_bits_here = state->bits & 0xff;
+      fprintf (stderr, "bits: %02x @ %d.\n", state->bits & 0xff,
+	       state->packed_start - state->write_bits_here);
 	  state->write_bits_here = NULL;
 	}
       state->bits = 1;
     }
 }
 
-void
+static void
 write_bits (state_t *state, int length, int bits)
 {
   int i;
@@ -94,75 +112,240 @@ write_bits (state_t *state, int length, int bits)
 }
 
 static void
+write_next_bits_here (state_t *state)
+{
+  if (state->bits != 1 &&
+      state->write_bits_here == NULL)
+    state->write_bits_here = --state->packed;
+}
+
+static void
 flush_bits (state_t *state)
 {
   write_bits (state, 7, 0);
 }
 
-#if 0
-static int
-analyze (struct state *state, int level)
+static void
+pack_string (state_t *state, int length, int offset)
 {
-  struct state optimum_state;
-  int optimum_bits;
-  int bits;
-  int i;
-
-  if (level == 0)
-    return 0;
-
-  optimum_state = -1;
-  optimum_bits = infinity;
-  for (i = 0; i < N; i++)
+  if (length < 2)
     {
-      struct *tmp_state = *state;
+      fprintf (stderr, "shyte\n");
+      exit (1);
+    }
+  else if (length < 3)
+    {
+      write_bit (state, 0);
+    }
+  else if (length < 4)
+    {
+      write_bit (state, 1);
+      write_bit (state, 0);
+    }
+  else if (length < 6)
+    {
+      write_bit (state, 1);
+      write_bit (state, 1);
+      write_bit (state, 0);
+      write_bits (state, 1, length - 4);
+    }
+  else if (length < 10)
+    {
+      write_bit (state, 1);
+      write_bit (state, 1);
+      write_bit (state, 1);
+      write_bit (state, 0);
+      write_bits (state, 2, length - 6);
+    }
+  else if (length < 1034)
+    {
+      write_bit (state, 1);
+      write_bit (state, 1);
+      write_bit (state, 1);
+      write_bit (state, 1);
+      write_bits (state, 10, length - 10);
+    }
+  else
+    {
+      fprintf (stderr, "bollox\n");
+      exit (1);
+    }
 
+  offset -= length;
 
-
-      /*
-
-1. copy_direct: yes/no?
-2.	use which copy length?
-		{ 1, 2-4, 5-7, 8-14, 15-269, 270-33037 }?
-3. (depack_bytes: always yes)
-4.	use which depack length?
-		{ 2, 3, 4-5, 6-9, 10-1033 }?
-5.	use which depack offset:
-6.		if length != 2:	use which offset?
-			{ 8, 5, 12 } bits?
-7.		if length == 2:	use which offset?
-			{ 6, 9 } bits?
-
-       */
-
-
-      /* search for strings in the previously processed data matching
-       * the current position */
-
-      /* do we need a copy_direct? */
-      /* if (tmp_state->last_copy_direct) => failure; */
-      /* if so, calculate what to copy, and how many bits we got */
-      /* set tmp_state->last_copy_direct = 1; */
-
-      /* calculate what to depack, and add to bits */
-
-      bits += analyze (tmp_state, level - 1);
-
-      if (bits < optimum_bits)
+  if (length == 2)
+    {
+      if (offset < 63)
 	{
-	  optimum_bits = bits;
-	  optimum_state = *tmp_state;
+	  write_bit (state, 0);
+	  write_bits (state, 6, offset + 1);
+	}
+      else if (offset < 575)
+	{
+	  write_bit (state, 1);
+	  write_bits (state, 9, offset - 63);
+	}
+      else
+	{
+	  fprintf (stderr, "bugger\n");
+	  exit (1);
+	}
+    }
+  else /* length > 2 */
+    {
+      if (offset < 31)
+	{
+	  write_bit (state, 1);
+	  write_bit (state, 0);
+	  write_bits (state, 5, offset + 1);
+	}
+      else if (offset < 287)
+	{
+	  write_bit (state, 0);
+	  write_bits (state, 8, offset - 31);
+	}
+      else if (offset < 4383)
+	{
+	  write_bit (state, 1);
+	  write_bit (state, 1);
+	  write_bits (state, 12, offset - 287);
+	}
+      else
+	{
+	  fprintf (stderr, "shit\n");
+	  exit (1);
 	}
     }
 
-  *state = optimum_state;
-  return optimum_bits;
+  state->unpacked -= length;
 }
-#endif
+
+static void
+copy_direct (state_t *state, int length)
+{
+  if (length == 0)
+    {
+      write_bit (state, 0);
+      return;
+    }
+
+  write_bit (state, 1);
+
+  if (length > 33037)
+    {
+      exit (1);
+    }
+
+  if (length < 2)
+    {
+      write_bits (state, 1, 0);
+    }
+  else if (length < 5)
+    {
+      write_bits (state, 1, 1);
+      write_bits (state, 2, length - 2);
+    }
+  else if (length < 8)
+    {
+      write_bits (state, 1, 1);
+      write_bits (state, 2, 3);
+      write_bits (state, 2, length - 5);
+    }
+  else if (length < 15)
+    {
+      write_bits (state, 1, 1);
+      write_bits (state, 2, 3);
+      write_bits (state, 2, 3);
+      write_bits (state, 3, length - 8);
+    }
+  else if (length < 270)
+    {
+      write_bits (state, 1, 1);
+      write_bits (state, 2, 3);
+      write_bits (state, 2, 3);
+      write_bits (state, 3, 7);
+      write_bits (state, 8, length - 15);
+    }
+  else /* length < 33038 */
+    {
+      write_bits (state, 1, 0x01);
+      write_bits (state, 2, 0x03);
+      write_bits (state, 2, 0x03);
+      write_bits (state, 3, 0x07);
+      write_bits (state, 8, 0xff);
+      write_bits (state, 15, length - 270);
+    }
+  
+  write_next_bits_here (state);
+  state->packed -= length;
+  state->unpacked -= length;
+  memcpy (state->packed, state->unpacked, length);
+}
 
 static void
 analyze (state_t *state, int level)
 {
+  int max_copy_direct_length;
+  int max_pack_string_length;
+  int max_pack_string_offset;
+  double max_compression;
+  int i;
+
+  char max_copy_direct[100];
+  char max_pack_string[100];
+
+  while (state->unpacked > state->unpacked_stop)
+    {
+      max_compression = 0;
+      for (i = 0; i < 33038; i++)
+	{
+	  int length, offset;
+	  state_t new_state = *state;
+	  double compression;
+
+	  if (new_state.unpacked - i < new_state.unpacked_stop)
+	    break;
+
+#if 0
+	  copy_direct (&new_state, i);
+#else
+	  new_state.packed -= 1;
+	  new_state.packed -= i;
+	  new_state.unpacked -= i;
+#endif
+	  offset = search_string (&new_state, &length);
+	  if (length < 2)
+	    continue;
+#if 0
+	  pack_string (&new_state, length, offset);
+#else
+	  new_state.packed -= 2;
+	  new_state.unpacked -= length;
+#endif
+	  compression =
+	    (double)(new_state.unpacked_start - new_state.unpacked) /
+	    (double)(new_state.packed_start - new_state.packed);
+      
+	  if (compression > max_compression)
+	    {
+	      max_compression = compression;
+	      max_copy_direct_length = i;
+	      max_pack_string_length = length;
+	      max_pack_string_offset = offset;
+	      if (i > 0)
+		sprintf (max_copy_direct, "copy_direct: length = %d\n", i);
+	      else
+		max_copy_direct[0] = 0;
+	      sprintf (max_pack_string,   "pack_string: length = %d, offset = %d\n", length, offset);
+	    }
+	}
+
+      copy_direct (state, max_copy_direct_length);
+      pack_string (state, max_pack_string_length, max_pack_string_offset);
+      fprintf (stderr, "%s%s", max_copy_direct, max_pack_string);
+    }
+
+  fprintf (stderr, "foo\n");
 }
 
 static char *
@@ -232,7 +415,7 @@ no_crunch (state_t *state)
 	  write_bits (state, 15, length - 270);
 	}
 
-      state->write_bits_here = --state->packed;
+      write_next_bits_here (state);
       state->packed -= length;
       state->unpacked -= length;
       memcpy (state->packed, state->unpacked, length);

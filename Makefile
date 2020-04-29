@@ -22,7 +22,7 @@ $(ICELIB): $(ICELIB_OBJS)
 	ranlib $(ICELIB)
 
 clean:
-	rm -f $(PROGS) $(ICELIB) $(ICELIBOBJS) icecat.o freeze.o melt.o
+	rm -f $(PROGS) $(ICELIB) $(ICELIB_OBJS) icecat.o freeze.o melt.o
 
 check: $(PROGS)
 	cd testcases; ./check

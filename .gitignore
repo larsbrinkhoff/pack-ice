@@ -1,3 +1,5 @@
 icecat
 freeze
 melt
+*.a
+*.o

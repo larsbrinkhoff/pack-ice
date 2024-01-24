@@ -4,6 +4,9 @@
 #include <stdio.h>
 #endif
 
+#include<string.h>
+#include<stdio.h>
+
 typedef struct ice_decrunch_state
 {
   char *unpacked_stop;
